@@ -89,7 +89,8 @@ def build_iv_table(X: pd.DataFrame, y: pd.Series, max_bins: int = 5, min_pct: fl
         try:
             edges = chi2_binning(X[col], y, max_bins=max_bins, min_pct=min_pct)
             tab, iv = calc_woe_iv(X[col], y, edges)
-        except Exception as exc:
+        except (ValueError, ZeroDivisionError, IndexError) as exc:
+
             logger.warning("列 %s 分箱失败：%s", col, exc)
             continue
         rows.append({"feature": col, "iv": round(iv, 6), "n_bins": int(tab.shape[0]), "edges": edges})
