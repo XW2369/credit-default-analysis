@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>信贷违约数据分析 · Day2</title>
+<style>
+  :root{
+    --ink:#1b1f24; --sub:#5b6570; --line:#e3e7ec; --bg:#ffffff;
+    --accent:#2f6f9f; --warn:#c0392b; --good:#2e7d5b; --soft:#f5f7f9;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:#eef1f4;color:var(--ink);
+       font-family:"Microsoft YaHei","PingFang SC","Segoe UI",system-ui,sans-serif;}
+  .slide{display:none;background:var(--bg);width:100%;max-width:1080px;margin:26px auto;
+         padding:46px 58px;min-height:560px;border-radius:10px;
+         box-shadow:0 2px 18px rgba(20,30,45,.10);}
+  .slide.active{display:block}
+  h1{font-size:38px;margin:0 0 10px;letter-spacing:-.5px}
+  h2{font-size:27px;margin:0 0 18px;padding-bottom:10px;border-bottom:3px solid var(--accent)}
+  h3{font-size:18px;margin:22px 0 8px;color:var(--sub)}
+  p,li{font-size:16px;line-height:1.75}
+  .kicker{color:var(--accent);font-size:14px;letter-spacing:2px;text-transform:uppercase;margin-bottom:14px}
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:18px 0}
+  .card{background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:16px}
+  .card .n{font-size:27px;font-weight:700;color:var(--accent);line-height:1.15}
+  .card .l{font-size:12.5px;color:var(--sub);margin-top:6px}
+  table{width:100%;border-collapse:collapse;font-size:15px;margin:10px 0}
+  th,td{border-bottom:1px solid var(--line);padding:8px 10px;text-align:left}
+  th{background:var(--soft);font-weight:600}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  .flag{color:var(--warn);font-weight:700}
+  .ok{color:var(--good);font-weight:700}
+  .imgs{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:8px}
+  .imgs figure{margin:0}
+  .imgs img{width:100%;border:1px solid var(--line);border-radius:6px;background:#fff}
+  .imgs figcaption{font-size:12.5px;color:var(--sub);margin-top:6px;text-align:center}
+  .note{background:#fff8f6;border-left:4px solid var(--warn);padding:12px 16px;margin:16px 0;font-size:15px}
+  .good{background:#f3faf6;border-left:4px solid var(--good);padding:12px 16px;margin:16px 0;font-size:15px}
+  .foot{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);
+        font-size:12.5px;color:var(--sub);display:flex;justify-content:space-between}
+  .nav{position:fixed;right:22px;bottom:18px;display:flex;gap:8px;z-index:9}
+  .nav button{background:var(--accent);color:#fff;border:0;border-radius:6px;
+              padding:9px 15px;font-size:14px;cursor:pointer}
+  .nav button:disabled{background:#b9c2cb;cursor:default}
+  .dot{position:fixed;left:22px;bottom:22px;font-size:13px;color:var(--sub)}
+</style>
+</head>
+<body>
+
+<!-- 1 封面 -->
+<section class="slide active">
+  <div class="kicker">7 天 AI 工程师转型 · Day 2</div>
+  <h1>信贷违约数据分析</h1>
+  <p style="font-size:19px;color:#5b6570;margin-top:4px">
+    EDA · duckdb 窗口函数 · <b>手写</b> WOE/IV 特征工程 · 数据质量治理
+  </p>
+  <div class="grid">
+    <div class="card"><div class="n">30000 × 25</div><div class="l">原始样本 × 原始特征</div></div>
+    <div class="card"><div class="n">22.12%</div><div class="l">违约率（6636 / 30000）</div></div>
+    <div class="card"><div class="n">23 → 13</div><div class="l">IV 筛选后入模特征</div></div>
+    <div class="card"><div class="n">8 / 8</div><div class="l">pytest 通过 · ruff 零 error</div></div>
+  </div>
+  <h3>数据 / 技术栈</h3>
+  <p>UCI Default of Credit Card Clients　·　Python 3.11 · pandas 3.0.6 · duckdb 1.5.5 · seaborn · uv</p>
+  <div class="foot"><span>叶小薇 · 2026-09-21</span><span>github.com/XW2369/credit-default-analysis</span></div>
+</section>
+
+<!-- 2 数据画像 -->
+<section class="slide">
+  <h2>数据画像：先看清手里有什么</h2>
+  <div class="grid">
+    <div class="card"><div class="n">0</div><div class="l">缺失值总数</div></div>
+    <div class="card"><div class="n">3.52 : 1</div><div class="l">好 : 坏（类别不平衡）</div></div>
+    <div class="card"><div class="n">100%</div><div class="l">清洗后有效率</div></div>
+    <div class="card"><div class="n">2</div><div class="l">发现的数据质量问题</div></div>
+  </div>
+
+  <h3>三个必须记住的结论</h3>
+  <ul>
+    <li><b>缺失为 0</b>：不需要填充。但"没有缺失"本身说明这是<b>已清洗过的数据</b>，不代表真实业务场景。</li>
+    <li><b>类别不平衡 3.52:1</b>：不算极端，<b>不需要重采样</b>；但<b>评估指标不能只看 accuracy</b>——
+        全预测"不违约"就有 77.9% 的准确率。</li>
+    <li><b class="flag">额度五分位的违约率严格单调递减</b>：33.38% → 25.90% → 20.58% → 16.93% → 13.80%。
+        <b>方向单调比 IV 高更值钱</b>——它意味着业务可解释，且线性模型能吃下它。</li>
+  </ul>
+
+  <div class="note"><b>坑：</b>首行是空行、真正的列名在第 2 行 → 必须 <code>header=1</code>。
+    用 <code>header=0</code> 读出来列名会变成 <code>0,1,2…</code> 外加一列 <code>Unnamed: 0</code>。</div>
+  <div class="foot"><span>2 / 5</span><span>信贷违约数据分析</span></div>
+</section>
+
+<!-- 3 四张图 -->
+<section class="slide">
+  <h2>四张图，四个问题</h2>
+  <div class="imgs">
+    <figure>
+      <img src="figures/01_target_distribution.png" alt="目标分布">
+      <figcaption>① 类别平衡吗 → 22.12% 违约</figcaption>
+    </figure>
+    <figure>
+      <img src="figures/02_missing.png" alt="缺失情况">
+      <figcaption>② 有多少缺失 → 0 条（这本身就是结论）</figcaption>
+    </figure>
+    <figure>
+      <img src="figures/03_limit_quintile_vs_default.png" alt="额度五分位">
+      <figcaption>③ 单调吗 → 严格递减 ✓</figcaption>
+    </figure>
+    <figure>
+      <img src="figures/04_education_vs_default.png" alt="学历档">
+      <figcaption>④ 有异常档吗 → <span class="flag">education = 0 异常</span></figcaption>
+    </figure>
+  </div>
+  <div class="foot"><span>3 / 5</span><span>信贷违约数据分析</span></div>
+</section>
+
+<!-- 4 特征工程 -->
+<section class="slide">
+  <h2>特征工程：手写卡方分箱 → WOE → IV</h2>
+  <table>
+    <tr><th>IV 区间</th><th>判读</th><th>本例</th></tr>
+    <tr><td>&lt; 0.02</td><td>无预测力，丢弃</td><td class="num">已剔除</td></tr>
+    <tr><td>0.02 – 0.1</td><td>弱</td><td class="num">部分保留</td></tr>
+    <tr><td>0.1 – 0.3</td><td>中</td><td class="num">limit_bal 等</td></tr>
+    <tr><td>0.3 – 0.5</td><td>强</td><td class="num">pay_3 / pay_4</td></tr>
+    <tr><td class="flag">&gt; 0.5</td><td class="flag">先怀疑泄漏，不要庆祝</td><td class="num flag">pay_0 · pay_2</td></tr>
+  </table>
+
+  <h3>IV 前 5 名</h3>
+  <table>
+    <tr><th>feature</th><th style="text-align:right">IV</th><th>判读</th></tr>
+    <tr><td>pay_0</td><td class="num flag">0.8736</td><td class="flag">需 OOT 验证是否为真强特征</td></tr>
+    <tr><td>pay_2</td><td class="num flag">0.5469</td><td class="flag">同上</td></tr>
+    <tr><td>pay_3</td><td class="num">0.4124</td><td>强</td></tr>
+    <tr><td>pay_4</td><td class="num">0.3591</td><td>强</td></tr>
+    <tr><td>pay_6</td><td class="num">0.2852</td><td>强</td></tr>
+  </table>
+
+  <div class="good"><b>防泄漏：先切分，再编码。</b>
+    WOE 是用 <code>y</code> 算出来的，属于<b>有监督变换</b>。
+    <code>train_test_split(stratify=y)</code> → <b>只在 train 上 fit WOE</b> → transform 到 test。
+    交叉验证时也必须<b>每折内部重新 fit</b>（包进 <code>sklearn.Pipeline</code>）。</div>
+  <div class="foot"><span>4 / 5</span><span>信贷违约数据分析</span></div>
+</section>
+
+<!-- 5 结论 -->
+<section class="slide">
+  <h2>结论与下一步</h2>
+
+  <h3>数据质量发现（本日最有价值的一条）</h3>
+  <div class="note">
+    <b>EDUCATION 存在 3 个文档未声明的类别值 0 / 5 / 6。</b>
+    其中 <code>education = 0</code> 仅 <b>14 条样本、坏率 0.0000</b>——
+    这是"方差炸弹"：树模型会为它生成一条精准切割 14 人的规则。<br>
+    处理（0/5/6 并入 others）后：<b>IV 0.015987 → 0.015683（未提升）</b>，
+    但<b>最小类别占比 0.047% → 1.56%（33 倍）</b>，分箱也由 2 箱恢复到 3 箱。<br>
+    <b>分寸感：处理数据质量有时是为了"把不稳定的东西变稳定"，不是为了刷指标。</b>
+  </div>
+
+  <h3>给 Day3 的五条可执行动作</h3>
+  <ol>
+    <li>直接入模 <code>pay_0 / pay_2 / pay_3 / pay_4 / pay_6 / limit_bal</code>（IV ≥ 0.1）。</li>
+    <li><code>pay_0</code>（IV 0.87）先做 <b>out-of-time 验证</b>，确认不是泄漏再决定用不用。</li>
+    <li><code>EDUCATION</code> 按"0/5/6 合并为 others"编码，<b>不要当作有序数值</b>。</li>
+    <li>补充领域特征：信用利用率、逾期次数、还款/账单比（函数已就绪）。</li>
+    <li>评估指标选 <b>AUC + KS + 召回率</b>，<b>不看 accuracy</b>；并用 <b>DeLong 或 bootstrap 给 AUC 置信区间</b>。</li>
+  </ol>
+  <div class="foot"><span>5 / 5</span><span>github.com/XW2369/credit-default-analysis</span></div>
+</section>
+
+<div class="nav">
+  <button id="prev">← 上一页</button>
+  <button id="next">下一页 →</button>
+</div>
+<div class="dot" id="dot"></div>
+
+<script>
+  const s=[...document.querySelectorAll('.slide')]; let i=0;
+  const show=()=>{s.forEach((el,k)=>el.classList.toggle('active',k===i));
+    document.getElementById('prev').disabled=i===0;
+    document.getElementById('next').disabled=i===s.length-1;
+    document.getElementById('dot').textContent=(i+1)+' / '+s.length;};
+  document.getElementById('prev').onclick=()=>{if(i>0){i--;show();window.scrollTo(0,0);}};
+  document.getElementById('next').onclick=()=>{if(i<s.length-1){i++;show();window.scrollTo(0,0);}};
+  document.addEventListener('keydown',e=>{
+    if(e.key==='ArrowRight'||e.key==='PageDown'){document.getElementById('next').click();}
+    if(e.key==='ArrowLeft'||e.key==='PageUp'){document.getElementById('prev').click();}});
+  show();
+</script>
+</body>
+</html>
