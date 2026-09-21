@@ -110,3 +110,55 @@ if __name__ == "__main__":
     print(iv_table[["feature", "iv", "n_bins"]].to_string(index=False))
     iv_table.to_csv("reports/iv_table.csv", index=False)
     logger.info("IV 表已写入 reports/iv_table.csv，共 %d 个特征", len(iv_table))
+
+
+def find_suspect_iv(iv_table: pd.DataFrame, thr: float = 0.5) -> pd.DataFrame:
+    """IV 高得可疑的特征。
+
+    IV > 0.5 先怀疑泄漏/目标穿越，而不是庆祝——这是信贷建模的第一直觉。
+    """
+    return iv_table.loc[iv_table["iv"] > thr].reset_index(drop=True)
+
+
+def fit_woe(df: pd.DataFrame, y: pd.Series, iv_table: pd.DataFrame, keep_thr: float = 0.02) -> dict:
+    """在【训练集】上拟合每个入选特征的 (edges, 箱号 -> WOE) 映射。
+
+    只在训练集上调用——在测试集上调用就是目标泄漏。
+    """
+    spec = {}
+    for _, row in iv_table.iterrows():
+        if row["iv"] < keep_thr:
+            continue
+        feat = row["feature"]
+        edges = np.asarray(row["edges"], dtype=float)
+        tab = _crosstab(_assign_bins(df[feat], edges), pd.Series(np.asarray(y, dtype=int)))
+        woe = np.log((tab["good"] / tab["good"].sum() + EPS) / (tab["bad"] / tab["bad"].sum() + EPS))
+        spec[feat] = (edges, {int(k): float(v) for k, v in woe.items()})
+    return spec
+
+
+def woe_transform(df: pd.DataFrame, spec: dict) -> pd.DataFrame:
+    """按训练集拟合出的 spec，把任意数据集转成 WOE 宽表。"""
+    out = pd.DataFrame(index=df.index)
+    for feat, (edges, woe_map) in spec.items():
+        out[f"{feat}_woe"] = _assign_bins(df[feat], edges).map(woe_map).astype(float)
+    return out
+
+
+def select_by_iv(iv_table: pd.DataFrame, thr: float = 0.02) -> list:
+    """按 IV 阈值选特征。经验档位：<0.02 无区分度；0.1~0.5 强；>0.5 先怀疑。"""
+    return iv_table.loc[iv_table["iv"] >= thr, "feature"].tolist()
+
+
+def add_domain_features(df: pd.DataFrame) -> pd.DataFrame:
+    """信贷领域特征：信用利用率 / 逾期次数 / 还款账单比。"""
+    out = df.copy()
+    bill_cols = [f"bill_amt{i}" for i in range(1, 7)]
+    pay_cols = [f"pay_amt{i}" for i in range(1, 7)]
+    status_cols = ["pay_0", "pay_2", "pay_3", "pay_4", "pay_5", "pay_6"]
+
+    out["utilization"] = out[bill_cols].mean(axis=1) / out["limit_bal"].replace(0, np.nan)
+    out["n_delinquency"] = (out[status_cols] >= 1).sum(axis=1)
+    denom = out[bill_cols].clip(lower=0).sum(axis=1).replace(0, np.nan)
+    out["pay_ratio"] = out[pay_cols].clip(lower=0).sum(axis=1) / denom
+    return out
