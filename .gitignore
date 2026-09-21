@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# 原始数据与产物不进版本库（体积大、可重新下载）
+data/raw/
+*.zip
+*.xls
+*.xlsx
+
+# 图表产物默认不入库（报告里引用即可）
+reports/figures/*.png
