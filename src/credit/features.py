@@ -22,6 +22,7 @@ def _assign_bins(x, edges) -> pd.Series:
     return pd.Series(np.digitize(x, edges), index=range(len(x)))
 
 
+
 def _crosstab(labels: pd.Series, y: pd.Series) -> pd.DataFrame:
     """每箱的好/坏数量表。good = 不违约(0)，bad = 违约(1)。"""
     tab = (
@@ -139,10 +140,16 @@ def fit_woe(df: pd.DataFrame, y: pd.Series, iv_table: pd.DataFrame, keep_thr: fl
 
 
 def woe_transform(df: pd.DataFrame, spec: dict) -> pd.DataFrame:
-    """按训练集拟合出的 spec，把任意数据集转成 WOE 宽表。"""
+    """按训练集拟合出的 spec，把任意数据集转成 WOE 宽表（按行位置对齐，绝不按索引）。
+
+    2026-09-22 修复：旧版 _assign_bins 返回 index=range(len(x)) 的 Series，
+    与本函数 index=df.index 的按索引对齐发生错位（train 29.7% / test 70% 行全 NaN，
+    其余行特征与 y 解耦，单特征 AUC=0.50）。现改为 numpy 按位置分箱、列表按位置写回。
+    """
     out = pd.DataFrame(index=df.index)
     for feat, (edges, woe_map) in spec.items():
-        out[f"{feat}_woe"] = _assign_bins(df[feat], edges).map(woe_map).astype(float)
+        bins = np.digitize(np.asarray(df[feat], dtype=float), edges)
+        out[f"{feat}_woe"] = [woe_map[int(b)] for b in bins]
     return out
 
 
